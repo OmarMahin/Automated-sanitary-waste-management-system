@@ -1,18 +1,20 @@
 #include <WebServer.h>
 #include <WiFi.h>
 #include <esp32cam.h>
+#include <ESP32Servo.h>
 
 const char* WIFI_SSID = "esp32-ap";
 const char* WIFI_PASS = "12345678";
 
 WebServer server(80);
 
-// Define available resolutions
-static auto hiRes = esp32cam::Resolution::find(800, 600);  // High resolution
-static auto medRes = esp32cam::Resolution::find(640, 480); // Medium resolution (fixed)
-static auto lowRes = esp32cam::Resolution::find(320, 240); 
+static auto medRes = esp32cam::Resolution::find(640, 480); 
 
-#define LED_PIN 4 // Built-in LED on ESP32-CAM
+
+#define LED_PIN 4 
+#define SERVO_PIN 15
+
+Servo lid_servo;
 
 void serveJpg() {
   auto frame = esp32cam::capture();
@@ -29,38 +31,32 @@ void serveJpg() {
   frame->writeTo(client);
 }
 
-void handleJpgHi() {
-  if (!esp32cam::Camera.changeResolution(hiRes)) {
-    Serial.println("SET-HI-RES FAIL");
-  }
-  serveJpg();
-}
 
-void handleJpgMed() {  // Fixed function name and variable
+
+void handleJpgMed() {  
   if (!esp32cam::Camera.changeResolution(medRes)) {
-    Serial.println("SET-MED-RES FAIL");
+    Serial.println("Medium-res image failed to set up");
   }
   serveJpg();
 }
 
-void handleJpgLow() {  // Fixed function name and variable
-  if (!esp32cam::Camera.changeResolution(lowRes)) {
-    Serial.println("SET-LOW-RES FAIL");
-  }
-  serveJpg();
-}
 
 void blink() {
   server.send(200, "text/plain", "blinked");
+  lid_servo.write(90);
   digitalWrite(LED_PIN, HIGH);
-  delay(100);
+  delay(2000);
   digitalWrite(LED_PIN, LOW);
+  lid_servo.write(0);
 }
 
 void noBlink() {
   digitalWrite(LED_PIN, LOW);
   server.send(200, "text/plain", "stopped blinking");
+  lid_servo.write(0);
 }
+
+
 
 void setup() {
   Serial.begin(115200);
@@ -70,33 +66,32 @@ void setup() {
   using namespace esp32cam;
   Config cfg;
   cfg.setPins(pins::AiThinker);
-  cfg.setResolution(hiRes);  // Start with high resolution
+  cfg.setResolution(medRes);  
   cfg.setBufferCount(2);
   cfg.setJpeg(80);
   bool ok = Camera.begin(cfg);
   Serial.println(ok ? "CAMERA OK" : "CAMERA FAIL");
 
-  // Set up ESP32-CAM as an Access Point
   WiFi.mode(WIFI_AP);
   WiFi.softAP(WIFI_SSID, WIFI_PASS);
 
   Serial.print("AP IP Address: ");
   Serial.println(WiFi.softAPIP());
 
-  Serial.println("  /cam-hi.jpg (High Resolution)");
-  Serial.println("  /cam-med.jpg (Medium Resolution)");
-  Serial.println("  /cam-low.jpg (Low Resolution)");
-  Serial.println("  /blink");
 
-  server.on("/cam-hi.jpg", handleJpgHi);
+  Serial.println("  /cam-med.jpg (Medium Resolution)");
+
+
   server.on("/cam-med.jpg", handleJpgMed);
-  server.on("/cam-low.jpg", handleJpgLow);
   server.on("/blink", blink);
   server.on("/no_blink", noBlink);
 
   server.begin();
 
+  lid_servo.attach(SERVO_PIN);
+
   digitalWrite(LED_PIN, HIGH);
+  lid_servo.write(0);
   delay(100);
   digitalWrite(LED_PIN, LOW);
 }
